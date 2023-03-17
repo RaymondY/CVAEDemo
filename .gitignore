@@ -1,5 +1,7 @@
 data/*
 !.gitkeep
+model/*
+!.gitkeep
 
 ### macOS template
 # General
