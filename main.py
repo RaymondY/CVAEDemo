@@ -2,15 +2,14 @@ import torch
 from utils import load_data
 from cvae import CVAE
 from train_test import train, test
-from config import DefaultConfig
+import config
 
-config = DefaultConfig()
 device = config.device
 
 
 def read_model_and_test():
-    prefix = 0
-    train_loader = load_data(prefix)
+    prefix = 1
+    train_loader = load_data(prefix, False)
     model = CVAE().to(device)
     # load block_num.pth
     print("Loading model...")
@@ -20,7 +19,7 @@ def read_model_and_test():
 
 def main():
     prefix = 0
-    train_loader = load_data(prefix)
+    train_loader = load_data(prefix, True)
     model = CVAE().to(device)
     train(train_loader, model)
 

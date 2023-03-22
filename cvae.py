@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from config import DefaultConfig
+import config
 
-config = DefaultConfig()
 device = config.device
 
 
@@ -11,16 +10,34 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
         # self.l_relu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
-        # self.relu = nn.ReLU(inplace=True)
-        self.elu = nn.ELU(inplace=True)
+        self.relu = nn.ReLU(inplace=True)
+        # self.elu = nn.ELU(inplace=True)
         self.has_act = has_act
 
     def forward(self, x):
         x = self.conv(x)
         if self.has_act:
             # x = self.l_relu(x)
-            # x = self.relu(x)
-            x = self.elu(x)
+            x = self.relu(x)
+            # x = self.elu(x)
+        return x
+
+
+class FCBlock(nn.Module):
+    def __init__(self, in_size, out_size, has_act=True):
+        super().__init__()
+        self.fc = nn.Linear(in_size, out_size)
+        # self.l_relu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
+        self.relu = nn.ReLU(inplace=True)
+        # self.elu = nn.ELU(inplace=True)
+        self.has_act = has_act
+
+    def forward(self, x):
+        x = self.fc(x)
+        if self.has_act:
+            # x = self.l_relu(x)
+            x = self.relu(x)
+            # x = self.elu(x)
         return x
 
 
@@ -28,7 +45,7 @@ class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True):
         super().__init__()
         self.conv1 = ConvBlock(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
-        self.conv2 = ConvBlock(out_channels, out_channels, kernel_size, stride, padding, bias=bias)
+        self.conv2 = ConvBlock(out_channels, out_channels, kernel_size, stride, padding, has_act=False, bias=bias)
         # shortcut
         # self.conv_x = ConvBlock(in_channels, out_channels, 1, 1, 0, has_act=False, bias=bias)
 
@@ -44,36 +61,42 @@ class CVAE(nn.Module):
         super().__init__()
         self.block_num = config.block_num
         self.feature_num = config.feature_num
+        print(f"config.cluster_num: {config.cluster_num}")
 
         # encoder
-        self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, padding)
+        self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, padding, has_act=False)
         self.encode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
                                                              kernel_size, stride, padding)
-        self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, padding)
+        self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, padding, has_act=False)
         # self.encode_linear_output = nn.Linear(config.input_size + config.cluster_num, config.latent_size)
         self.encode_mu = nn.Sequential(
-            nn.Linear(config.input_size + config.cluster_num, config.intermediate_size),
-            nn.ReLU(),
-            nn.Linear(config.intermediate_size, config.latent_size),
+            FCBlock(config.input_size + config.cluster_num, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
         self.encode_log_var = nn.Sequential(
-            nn.Linear(config.input_size + config.cluster_num, config.intermediate_size),
-            nn.ReLU(),
-            nn.Linear(config.intermediate_size, config.latent_size),
-            # nn.Softplus()
+            FCBlock(config.input_size + config.cluster_num, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
 
         # decoder
         self.decode_linear = nn.Sequential(
-            nn.Linear(config.latent_size + config.cluster_num, config.intermediate_size),
-            nn.ReLU(),
-            nn.Linear(config.intermediate_size, config.input_size),
+            FCBlock(config.latent_size + config.cluster_num, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            # FCBlock(config.intermediate_size, config.intermediate_size),
+            FCBlock(config.intermediate_size, config.input_size, has_act=False)
         )
 
-        self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, padding)
+        self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, padding, has_act=False)
         self.decode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
                                                              kernel_size, stride, padding)
-        self.decode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, padding)
+        self.decode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, padding, has_act=False)
 
         # shortcut
         # self.conv_x = ConvBlock(in_channels, out_channels, 1, 1, 0, has_act=False, bias=bias)

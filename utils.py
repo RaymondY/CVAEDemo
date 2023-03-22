@@ -2,13 +2,12 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import DBSCAN
+from sklearn.decomposition import PCA
 from scipy.spatial import distance
 from sklearn.metrics.pairwise import pairwise_distances
 
-from config import DefaultConfig
-
-config = DefaultConfig()
+import config
 
 
 class AddressDataset(Dataset):
@@ -16,19 +15,34 @@ class AddressDataset(Dataset):
         self.prefix_index = prefix_index
         self.path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
         self.data = np.loadtxt(self.path, delimiter=',').astype(np.int32)
+        self.sample_num = self.data.shape[0]
+        print(self.data.shape)
         if is_train:
             self.labels = self.clustering()
+            # print the number of each cluster
+            print(self.labels.shape)
+            print(np.sum(self.labels, axis=0))
         else:
-            self.labels = None
-            self.data = self.data[0:10, :]
+            # self.labels = None
+            self.labels = self.clustering()
+            # self.data = self.data[0:10, :]
 
     def clustering(self):
-        hac = AgglomerativeClustering(n_clusters=config.cluster_num, affinity='l1', linkage="complete").fit(self.data)
-        # hac = AgglomerativeClustering(n_clusters=config.cluster_num, affinity='hamming').fit(self.data)
-        cluster_result = hac.labels_
-        print(cluster_result)
+        min_samples = np.round(self.sample_num * config.eps_ratio).astype(int)
+        dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples)
+        cluster_result = dbscan.fit_predict(self.data)
+        # if there are outliers
+        if -1 in cluster_result:
+            # set all outliers to one cluster
+            print('outliers')
+            cluster_result = cluster_result + 1
+        config.cluster_num = np.unique(cluster_result).shape[0]
+        print(config.cluster_num)
+        print(np.bincount(cluster_result))
         cluster_result_one_hot = np.eye(config.cluster_num)[cluster_result].astype(int)
         return cluster_result_one_hot
+
+    # def get_normalized_entropy(self):
 
     def __getitem__(self, index):
         if self.labels is not None:
@@ -42,49 +56,8 @@ class AddressDataset(Dataset):
 
 def load_data(prefix_index, is_train=True):
     dataset = AddressDataset(prefix_index, is_train)
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    if is_train:
+        dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+    else:
+        dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
     return dataloader
-
-
-# def load_plane_data(prefix_index, is_train=False):
-#     plane_data = np.zeros(shape=(config.sample_num, 32)).astype(int)
-#
-#     path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
-#     plane_data_per_prefix = np.loadtxt(path, delimiter=',').astype(np.int32)
-#     plane_data[0:config.sample_num, :] = plane_data_per_prefix
-#     # print(plane_data)
-#
-#     # clustering: hamming distance;
-#     # !!! End condition: distance
-#     hac = AgglomerativeClustering(n_clusters=config.cluster_num, affinity='hamming')
-#     # hac = AgglomerativeClustering(distance_threshold=config.distance_threshold, affinity='hamming')
-#     hac.fit(plane_data)
-#
-#     cluster_result = hac.labels_
-#
-#     cluster_result_one_hot = np.eye(config.cluster_num)[cluster_result].astype(int)
-#
-#     # one-hot encoding
-#     # plane_data_one_hot = np.zeros(shape=(config.sample_num, config.input_size)).astype(int)
-#     # for i in range(config.sample_num):
-#     #     plane_data_one_hot[i] = np.eye(17)[plane_data[i]].reshape(-1)
-#     #     # print(plane_data_one_hot[i])
-#     # # print(plane_data_one_hot.shape)
-#     # data = np.hstack((plane_data_one_hot, cluster_result_one_hot)).astype("float32")
-#
-#     # try binary map encoding
-#     # !!!!
-#
-#     data = np.hstack((plane_data, cluster_result_one_hot)).astype("float32")
-#
-#     # # print(data)
-#     # print(data.shape)
-#
-#     if is_train:
-#         return data
-#     else:
-#         # 随机选取1000行  进行试探
-#         # np.random.shuffle(data)
-#         # data_sample = data[:1000, :]
-#         # print(data_sample.shape)
-#         return tf.convert_to_tensor(data)
