@@ -2,7 +2,7 @@ tran_ipv6.py
 scan_output_responsive.txt
 ipasn.20220916.dat
 raw_data/*
-cluster_test.py
+# cluster_test.py
 data_old/
 evaluate.py
 
