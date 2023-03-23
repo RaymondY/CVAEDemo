@@ -1,11 +1,6 @@
 import numpy as np
-import torch
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 from sklearn.cluster import DBSCAN
-from sklearn.decomposition import PCA
-from scipy.spatial import distance
-from sklearn.metrics.pairwise import pairwise_distances
 
 import config
 
@@ -25,7 +20,6 @@ class AddressDataset(Dataset):
         else:
             # self.labels = None
             self.labels = self.clustering()
-            # self.data = self.data[0:10, :]
 
     def clustering(self):
         min_samples = np.round(self.sample_num * config.eps_ratio).astype(int)

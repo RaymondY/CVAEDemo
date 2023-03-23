@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from utils import load_data
 import config
 
 device = config.device
@@ -10,15 +9,16 @@ device = config.device
 
 def loss_func(pred_x, x, z_mu, z_log_var):
     # reconstruction loss:
-    l1_loss = nn.MSELoss()(pred_x, x)
-    # use kl divergence
-    kl_loss = -0.5 * torch.sum(1 + z_log_var - z_mu.pow(2) - z_log_var.exp())
-    return l1_loss + kl_loss
+    px_z = -nn.MSELoss()(pred_x, x) / 2
+    # px_z = -nn.MSELoss()(pred_x, x)
+    # use kl divergence: -kl
+    kl_item = -0.5 * torch.sum(1 + z_log_var - z_mu.pow(2) - z_log_var.exp())
+    return -(px_z - kl_item)
 
 
-def train(train_loader, model):
+def train(train_loader, model, prefix):
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     model.train()
     for epoch in range(config.epoch_num):
         with tqdm(train_loader, desc=f"Epoch: {epoch + 1}", unit="batch") as tepoch:
@@ -36,7 +36,7 @@ def train(train_loader, model):
 
         scheduler.step()
     # save model
-    torch.save(model.state_dict(), config.model_path)
+    torch.save(model.state_dict(), config.model_path + f"/{prefix}.pth")
 
 
 # def test(model, test_loader):
