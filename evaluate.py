@@ -18,9 +18,10 @@ def test(model, test_loader):
             # generate
             pred_x = model.generate(c).squeeze(1)
             # round pred_x to int and limit to [0, 15]
-            pred_x = pred_x.round().int()
             pred_x[pred_x > 15] = 15
             pred_x[pred_x < 0] = 0
+            # pred_x = pred_x.round().int()
+            pred_x = pred_x.round().int()
             pred_x = pred_x.cpu().numpy()
             # save to new_address
             for i in range(pred_x.shape[0]):
@@ -31,7 +32,7 @@ def test(model, test_loader):
 
 def test_specific_model(prefix):
     print(f"Testing model for prefix {prefix}...")
-    test_loader = load_test_data(prefix, 5000)
+    test_loader = load_test_data(prefix)
     cluster_num = get_cluster_num(prefix)
     model = CVAE(cluster_num).to(device)
     # load corresponding model
@@ -40,13 +41,18 @@ def test_specific_model(prefix):
     # remove duplicate
     new_address = list(set(new_address))
     print(f"New address number before removing duplicate from train data: {len(new_address)}")
-    # remove duplicate from train data
+    # # remove duplicate from train data
     new_address = check_duplicate_from_train(prefix, new_address)
     print(f"New address number: {len(new_address)}")
+    # print(np.array(new_address).reshape(-1, 2))
     # save new_address to file
-    # with open(config.new_address_path + f"{prefix}.txt", "w") as f:
+    with open(config.new_address_path + f"{prefix}.txt", "w") as f:
+        for address in new_address:
+            f.write(f"{address}\n")
+    # # save new_address to csv file
+    # with open(config.new_address_path + f"{prefix}.csv", "w") as f:
     #     for address in new_address:
-    #         f.write(f"{address}\n")
+    #         f.write(f"{address},\n")
 
 
 def test_multiple_model(prefix_list):

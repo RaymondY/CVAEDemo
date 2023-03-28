@@ -58,9 +58,17 @@ class GenerateDataset(Dataset):
         self.prefix_index = prefix_index
         self.cluster_num = get_cluster_num(prefix_index)
         self.sample_num = sample_num
-        self.cluster_labels = np.random.randint(0, self.cluster_num, size=self.sample_num)
-        print(np.bincount(self.cluster_labels))
+        self.cluster_labels = np.array([i % self.cluster_num for i in range(self.sample_num)])
+        # self.cluster_labels = np.array([0, 0, 1, 1, 2, 2, 3, 3, 4, 4])
+        # self.cluster_labels = np.random.randint(0, self.cluster_num, size=self.sample_num)
+        # remove the outliers where the cluster_label is 0
+        # self.cluster_labels = self.cluster_labels[self.cluster_labels != 0]
+        # self.sample_num = self.cluster_labels.shape[0]
+
+        # print(np.bincount(self.cluster_labels))
         self.cluster_labels_one_hot = np.eye(self.cluster_num)[self.cluster_labels].astype(int)
+        print(self.cluster_labels_one_hot.shape)
+        print(self.cluster_labels_one_hot)
 
     def __getitem__(self, index):
         return self.cluster_labels_one_hot[index]
@@ -75,7 +83,7 @@ def load_train_data(prefix_index):
     return dataloader
 
 
-def load_test_data(prefix_index, sample_num=1000):
+def load_test_data(prefix_index, sample_num=5000):
     dataset = GenerateDataset(prefix_index, sample_num)
     dataloader = DataLoader(dataset, batch_size=config.test_batch_size, shuffle=False, drop_last=False)
     return dataloader
@@ -119,6 +127,9 @@ def check_duplicate_from_train(prefix_index, ipv6_set):
     for ipv6 in ipv6_set:
         if ipv6 in train_ipv6_list:
             ipv6_set.remove(ipv6)
+    # print the first 10 ipv6 addresses in training set
+    print('first 10 ipv6 addresses in training set:')
+
     return ipv6_set
 
 

@@ -23,16 +23,16 @@ class DefaultConfig(object):
     eps_threshold = 8
     eps_ratio = 0.01
 
-    batch_size = 128
+    batch_size = 64
     test_batch_size = 100
 
     beta = 1
     block_num = 8
-    feature_num = 32
-    intermediate_size = 16
+    feature_num = 256
+    intermediate_size = 256
 
     epoch_num = 30
-    lr = 1e-3
+    lr = 2e-3
 
     # current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     # log_dir = 'logs/gradient_tape/' + current_time

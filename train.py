@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,18 +12,22 @@ config = DefaultConfig()
 device = config.device
 
 
-def loss_func(pred_x, x, z_mu, z_log_var):
-    # reconstruction loss:
-    px_z = -nn.MSELoss()(pred_x, x) / 2
-    # px_z = -nn.MSELoss()(pred_x, x)
-    # use kl divergence: -kl
-    kl_item = -0.5 * config.beta * torch.sum(1 + z_log_var - z_mu.pow(2) - z_log_var.exp())
-    return -(px_z - kl_item)
+def log_normal_pdf(sample, mean, log_var, dim=1):
+    log_2pi = torch.log(torch.tensor(2. * np.pi))
+    return torch.sum(-.5 * ((sample - mean) ** 2. * torch.exp(-log_var) + log_var + log_2pi), dim=dim)
+
+
+def loss_func(pred_x, x, z_mu, z_log_var, z):
+    log_p_x_z = log_normal_pdf(x, pred_x, torch.zeros_like(pred_x))
+    # log_p_x_z = torch.sum(-.5 * (x - pred_x) ** 2, dim=1)
+    log_p_z = log_normal_pdf(z, torch.zeros_like(z), torch.zeros_like(z))
+    log_q_z_x = log_normal_pdf(z, z_mu, z_log_var)
+    return -torch.mean(log_p_x_z + config.beta * (log_p_z - log_q_z_x))
 
 
 def train(train_loader, model, prefix):
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
     model.train()
     for epoch in range(config.epoch_num):
         running_loss = 0.0
@@ -31,9 +36,9 @@ def train(train_loader, model, prefix):
                 x = x.unsqueeze(1).float().to(device)
                 c = c.float().to(device)
                 # forward
-                pred_x, z_mu, z_log_var = model(x, c)
+                pred_x, z_mu, z_log_var, z = model(x, c)
                 # backward
-                loss = loss_func(pred_x, x, z_mu, z_log_var)
+                loss = loss_func(pred_x.squeeze(1), x.squeeze(1), z_mu, z_log_var, z)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()

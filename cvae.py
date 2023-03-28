@@ -120,14 +120,16 @@ class CBAMResBlock(nn.Module):
         super().__init__()
         self.conv1 = ConvBlock(in_channels, out_channels, kernel_size, stride)
         self.conv2 = ConvBlock(out_channels, out_channels, kernel_size, stride, has_act=False)
+        # self.conv2 = ConvBlock(out_channels, out_channels, kernel_size, stride)
         self.cbam = CBAM(out_channels, reduction_ratio, has_spatial)
 
     def forward(self, x):
-        res = self.conv1(x)
+        res = x
+        res = self.conv1(res)
         res = self.conv2(res)
         res = self.cbam(res)
-        # return nn.ReLU()(x + res)
         return x + res
+        # return res
 
 
 class CVAE(nn.Module):
@@ -139,18 +141,24 @@ class CVAE(nn.Module):
 
         # encoder
         self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, has_act=False)
+        # self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride)
         self.encode_cbam_blocks = self._make_cbam_blocks(self.block_num, self.feature_num, self.feature_num,
                                                          kernel_size, stride)
         # self.encode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
         #                                                      kernel_size, stride, padding)
         self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, has_act=False)
+        # self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride)
         self.encode_mu = nn.Sequential(
             LinearBlock(config.input_size + self.cluster_num, config.intermediate_size),
+            # LinearBlock(config.intermediate_size, config.intermediate_size),
+            LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
         self.encode_log_var = nn.Sequential(
             LinearBlock(config.input_size + self.cluster_num, config.intermediate_size),
+            # LinearBlock(config.intermediate_size, config.intermediate_size),
+            LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
@@ -158,16 +166,20 @@ class CVAE(nn.Module):
         # decoder
         self.decode_mu = nn.Sequential(
             LinearBlock(config.latent_size + self.cluster_num, config.intermediate_size),
+            # LinearBlock(config.intermediate_size, config.intermediate_size),
+            LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.input_size, has_act=False)
         )
 
         self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, has_act=False)
+        # self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride)
         # self.decode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
         #                                                      kernel_size, stride, padding)
         self.decode_cbam_blocks = self._make_cbam_blocks(self.block_num, self.feature_num, self.feature_num,
                                                          kernel_size, stride)
         self.decode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, has_act=False)
+        # self.decode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride)
 
         # shortcut
         # self.conv_x = ConvBlock(in_channels, out_channels, 1, 1, 0, has_act=False, bias=bias)
@@ -215,7 +227,7 @@ class CVAE(nn.Module):
         z_mu, z_log_var = self.encode(x, c)
         z = self.reparameterize(z_mu, z_log_var)
         pred_x = self.decode(z, c)
-        return pred_x, z_mu, z_log_var
+        return pred_x, z_mu, z_log_var, z
 
     def generate(self, c):
         # sample z from N(0, 1)
