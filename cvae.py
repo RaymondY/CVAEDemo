@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
-import config
+from config import DefaultConfig
 
+config = DefaultConfig()
 device = config.device
 
 
@@ -130,11 +131,11 @@ class CBAMResBlock(nn.Module):
 
 
 class CVAE(nn.Module):
-    def __init__(self, kernel_size=3, stride=1):
+    def __init__(self, cluster_num, kernel_size=3, stride=1):
         super().__init__()
+        self.cluster_num = cluster_num
         self.block_num = config.block_num
         self.feature_num = config.feature_num
-        print(f"config.cluster_num: {config.cluster_num}")
 
         # encoder
         self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, has_act=False)
@@ -143,21 +144,20 @@ class CVAE(nn.Module):
         # self.encode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
         #                                                      kernel_size, stride, padding)
         self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, has_act=False)
-        # self.encode_linear_output = nn.Linear(config.input_size + config.cluster_num, config.latent_size)
         self.encode_mu = nn.Sequential(
-            LinearBlock(config.input_size + config.cluster_num, config.intermediate_size),
+            LinearBlock(config.input_size + self.cluster_num, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
         self.encode_log_var = nn.Sequential(
-            LinearBlock(config.input_size + config.cluster_num, config.intermediate_size),
+            LinearBlock(config.input_size + self.cluster_num, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.latent_size, has_act=False)
         )
 
         # decoder
         self.decode_mu = nn.Sequential(
-            LinearBlock(config.latent_size + config.cluster_num, config.intermediate_size),
+            LinearBlock(config.latent_size + self.cluster_num, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.intermediate_size),
             LinearBlock(config.intermediate_size, config.input_size, has_act=False)
         )
@@ -216,3 +216,9 @@ class CVAE(nn.Module):
         z = self.reparameterize(z_mu, z_log_var)
         pred_x = self.decode(z, c)
         return pred_x, z_mu, z_log_var
+
+    def generate(self, c):
+        # sample z from N(0, 1)
+        z = torch.randn((c.shape[0], config.latent_size)).to(device)
+        pred_x = self.decode(z, c)
+        return pred_x

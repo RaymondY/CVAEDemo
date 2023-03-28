@@ -2,9 +2,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from config import DefaultConfig
 
-import config
-
+config = DefaultConfig()
 device = config.device
 
 
