@@ -9,6 +9,7 @@ data_old/
 data/*
 model/*
 new_address/*
+result/*
 !.gitkeep
 
 ### macOS template
