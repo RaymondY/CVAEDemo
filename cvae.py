@@ -127,7 +127,7 @@ class CBAMResBlock(nn.Module):
         res = x
         res = self.conv1(res)
         res = self.conv2(res)
-        res = self.cbam(res)
+        # res = self.cbam(res)
         return x + res
         # return res
 
@@ -144,8 +144,6 @@ class CVAE(nn.Module):
         # self.encode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride)
         self.encode_cbam_blocks = self._make_cbam_blocks(self.block_num, self.feature_num, self.feature_num,
                                                          kernel_size, stride)
-        # self.encode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
-        #                                                      kernel_size, stride, padding)
         self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, has_act=False)
         # self.encode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride)
         self.encode_mu = nn.Sequential(
@@ -174,8 +172,6 @@ class CVAE(nn.Module):
 
         self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride, has_act=False)
         # self.decode_conv_input = ConvBlock(1, self.feature_num, kernel_size, stride)
-        # self.decode_res_dense_blocks = self._make_res_blocks(self.block_num, self.feature_num, self.feature_num,
-        #                                                      kernel_size, stride, padding)
         self.decode_cbam_blocks = self._make_cbam_blocks(self.block_num, self.feature_num, self.feature_num,
                                                          kernel_size, stride)
         self.decode_conv_output = ConvBlock(self.feature_num, 1, kernel_size, stride, has_act=False)

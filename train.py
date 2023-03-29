@@ -27,7 +27,7 @@ def loss_func(pred_x, x, z_mu, z_log_var, z):
 
 def train(train_loader, model, prefix):
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.25)
     model.train()
     for epoch in range(config.epoch_num):
         running_loss = 0.0

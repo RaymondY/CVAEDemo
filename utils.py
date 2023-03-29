@@ -26,8 +26,8 @@ class AddressDataset(Dataset):
 
     def clustering(self):
         min_samples = np.round(self.sample_num * config.eps_ratio).astype(int)
-        dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples)
-        cluster_result = dbscan.fit_predict(self.data)
+        # dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples)
+        # cluster_result = dbscan.fit_predict(self.data)
         # if there are outliers
         if -1 in cluster_result:
             # set all outliers to one cluster

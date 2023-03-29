@@ -12,8 +12,8 @@ def main():
     # detect if cluster_num.txt exists
     if not os.path.exists(config.cluster_num_path):
         init_cluster_num()
-    train_specific_model(1)
-    test_specific_model(1)
+    train_specific_model(301)
+    test_specific_model(301)
 
 
 if __name__ == '__main__':
