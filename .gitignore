@@ -1,5 +1,6 @@
 tran_ipv6.py
 cluster_num.txt
+cluster_info.txt
 scan_output_responsive.txt
 ipasn.20220916.dat
 raw_data/*

@@ -41,18 +41,25 @@ def test_specific_model(prefix):
     # remove duplicate
     new_address = list(set(new_address))
     print(f"New address number before removing duplicate from train data: {len(new_address)}")
-    # # remove duplicate from train data
+    # remove duplicate from train data
     new_address = check_duplicate_from_train(prefix, new_address)
     print(f"New address number: {len(new_address)}")
-    # print(np.array(new_address).reshape(-1, 2))
-    # save new_address to file
-    with open(config.new_address_path + f"{prefix}.txt", "w") as f:
-        for address in new_address:
-            f.write(f"{address}\n")
-    # # save new_address to csv file
-    # with open(config.new_address_path + f"{prefix}.csv", "w") as f:
+    # # save new_address to file
+    # with open(config.new_address_path + f"{prefix}.txt", "w") as f:
     #     for address in new_address:
-    #         f.write(f"{address},\n")
+    #         f.write(f"{address}\n")
+
+    # mkdir "prefix" if not exists
+    if not os.path.exists(config.new_address_path + f"{prefix}"):
+        os.mkdir(config.new_address_path + f"{prefix}")
+
+    cluster_labels = test_loader.dataset.get_cluster_labels()
+    # save new_address to different file according to cluster label
+    for i in range(cluster_num):
+        with open(config.new_address_path + f"{prefix}/{i}.txt", "w") as f:
+            for k in range(len(new_address)):
+                if cluster_labels[k] == i:
+                    f.write(f"{new_address[k]}\n")
 
 
 def test_multiple_model(prefix_list):

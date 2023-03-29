@@ -15,15 +15,17 @@ class DefaultConfig(object):
     data_path = os.path.join(current_path, 'data/')
     model_path = os.path.join(current_path, 'model/')
     new_address_path = os.path.join(current_path, 'new_address/')
-    cluster_num_path = os.path.join(current_path, 'cluster_num.txt')
+    # cluster_num_path = os.path.join(current_path, 'cluster_num.txt')
+    cluster_info_path = os.path.join(current_path, 'cluster_info.txt')
 
     input_size = 32
     latent_size = 8
 
     eps_threshold = 8
-    eps_ratio = 0.01
+    eps_ratio = 0.02
+    eps_min_sample = 200
 
-    batch_size = 128
+    batch_size = 64
     test_batch_size = 100
 
     beta = 1

@@ -12,13 +12,19 @@ config = DefaultConfig()
 device = config.device
 
 
+def log_laplace_pdf(sample, mean, log_b, dim=1):
+    log_2 = torch.log(torch.tensor(2.))
+    return torch.sum(-log_2 - log_b - torch.abs(sample - mean) / torch.exp(log_b), dim=dim)
+
+
 def log_normal_pdf(sample, mean, log_var, dim=1):
     log_2pi = torch.log(torch.tensor(2. * np.pi))
     return torch.sum(-.5 * ((sample - mean) ** 2. * torch.exp(-log_var) + log_var + log_2pi), dim=dim)
 
 
 def loss_func(pred_x, x, z_mu, z_log_var, z):
-    log_p_x_z = log_normal_pdf(x, pred_x, torch.zeros_like(pred_x))
+    # log_p_x_z = log_normal_pdf(x, pred_x, torch.zeros_like(pred_x))
+    log_p_x_z = log_laplace_pdf(x, pred_x, torch.zeros_like(pred_x))
     # log_p_x_z = torch.sum(-.5 * (x - pred_x) ** 2, dim=1)
     log_p_z = log_normal_pdf(z, torch.zeros_like(z), torch.zeros_like(z))
     log_q_z_x = log_normal_pdf(z, z_mu, z_log_var)
@@ -27,7 +33,7 @@ def loss_func(pred_x, x, z_mu, z_log_var, z):
 
 def train(train_loader, model, prefix):
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.25)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     model.train()
     for epoch in range(config.epoch_num):
         running_loss = 0.0
