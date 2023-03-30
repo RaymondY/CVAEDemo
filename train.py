@@ -23,8 +23,8 @@ def log_normal_pdf(sample, mean, log_var, dim=1):
 
 
 def loss_func(pred_x, x, z_mu, z_log_var, z):
-    # log_p_x_z = log_normal_pdf(x, pred_x, torch.zeros_like(pred_x))
-    log_p_x_z = log_laplace_pdf(x, pred_x, torch.zeros_like(pred_x))
+    log_p_x_z = log_normal_pdf(x, pred_x, torch.zeros_like(pred_x))
+    # log_p_x_z = log_laplace_pdf(x, pred_x, torch.zeros_like(pred_x))
     # log_p_x_z = torch.sum(-.5 * (x - pred_x) ** 2, dim=1)
     log_p_z = log_normal_pdf(z, torch.zeros_like(z), torch.zeros_like(z))
     log_q_z_x = log_normal_pdf(z, z_mu, z_log_var)

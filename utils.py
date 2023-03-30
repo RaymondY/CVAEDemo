@@ -8,27 +8,18 @@ config = DefaultConfig()
 
 
 class AddressDataset(Dataset):
-    def __init__(self, prefix_index, is_train=True):
+    def __init__(self, prefix_index):
         self.prefix_index = prefix_index
         self.path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
         self.data = np.loadtxt(self.path, delimiter=',').astype(np.int32)
         self.sample_num = self.data.shape[0]
         print(self.data.shape)
         self.labels = self.clustering()
-        # if is_train:
-        #     self.labels = self.clustering()
-        #     # print the number of each cluster
-        #     print(self.labels.shape)
-        #     print(np.sum(self.labels, axis=0))
-        # else:
-        #     # self.labels = None
-        #     self.labels = self.clustering()
 
     def clustering(self):
         min_samples_data = np.round(self.sample_num * config.eps_ratio).astype(int)
         min_samples = min_samples_data if min_samples_data > config.eps_min_sample else config.eps_min_sample
         # dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples, metric="minkowski", p=0.5)
-        # dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples, metric="l1")
         dbscan = DBSCAN(eps=config.eps_threshold, min_samples=min_samples, metric="l1")
         cluster_result = dbscan.fit_predict(self.data)
         # if there are outliers
@@ -40,18 +31,40 @@ class AddressDataset(Dataset):
         cluster_info = np.bincount(cluster_result)
         print(f"cluster_num: {cluster_num}")
         print(f"distribution: {cluster_info}")
-        # update_cluster_num(self.prefix_index, cluster_num)
         update_cluster_info(self.prefix_index, cluster_info)
         cluster_result_one_hot = np.eye(cluster_num)[cluster_result].astype(int)
         return cluster_result_one_hot
-
-    # def get_normalized_entropy(self):
 
     def __getitem__(self, index):
         if self.labels is not None:
             return self.data[index], self.labels[index]
         else:
             return self.data[index]
+
+    def __len__(self):
+        return len(self.data)
+
+
+class RefineAddressDataset(Dataset):
+    # refine the address dataset using validated new addresses
+    def __init__(self, prefix_index):
+        self.prefix_index = prefix_index
+        self.dir = config.result_path + '{prefix_index}/'.format(prefix_index=prefix_index)
+        self.cluster_num = os.listdir(self.dir).__len__()
+        self.data = []
+        self.labels = []
+        for i in range(self.cluster_num):
+            path = self.dir + '{cluster_index}.txt'.format(cluster_index=i)
+            cluster_data = np.loadtxt(path, delimiter=',').astype(np.int32)
+            # apply get_vector_ipv6 to each row, get the vector representation of ipv6 address
+            cluster_data = np.apply_along_axis(get_vector_ipv6, 1, cluster_data)
+            self.data.append(cluster_data)
+            self.labels.append(np.eye(self.cluster_num)[i].astype(int))
+        self.data = np.concatenate(self.data, axis=0)
+        self.labels = np.concatenate(self.labels, axis=0)
+
+    def __getitem__(self, index):
+        return self.data[index], self.labels[index]
 
     def __len__(self):
         return len(self.data)
@@ -82,9 +95,6 @@ class GenerateDataset(Dataset):
         self.cluster_labels_one_hot = np.eye(self.cluster_num)[self.cluster_labels].astype(int)
         print(self.cluster_labels_one_hot.shape)
 
-    def get_cluster_labels(self):
-        return self.cluster_labels
-
     def __getitem__(self, index):
         return self.cluster_labels_one_hot[index]
 
@@ -102,31 +112,6 @@ def load_test_data(prefix_index, sample_num=5000):
     dataset = GenerateDataset(prefix_index, sample_num)
     dataloader = DataLoader(dataset, batch_size=config.test_batch_size, shuffle=False, drop_last=False)
     return dataloader
-
-
-# def init_cluster_num():
-#     # count .txt files in data_path and init a .txt file
-#     # to record the number of clusters for each prefix
-#     file_list = os.listdir(config.data_path)
-#     prefix_num = len(file_list)
-#     with open(config.cluster_num_path, 'w') as f:
-#         for i in range(prefix_num):
-#             f.write('0\n')
-
-
-# def update_cluster_num(prefix_index, cluster_num):
-#     with open(config.cluster_num_path, 'r') as f:
-#         lines = f.readlines()
-#     lines[prefix_index] = str(cluster_num) + '\n'
-#     with open(config.cluster_num_path, 'w') as f:
-#         for line in lines:
-#             f.write(line)
-
-
-# def get_cluster_num(prefix_index):
-#     with open(config.cluster_num_path, 'r') as f:
-#         lines = f.readlines()
-#     return int(lines[prefix_index])
 
 
 def init_cluster_info():
@@ -166,6 +151,7 @@ def get_cluster_num(prefix_index):
 
 def check_duplicate_from_train(prefix_index, ipv6_set):
     # check if the ipv6 address is in the training set
+    # ipv6_set is a dict, the key is the ipv6 address and the value is the cluster label
     path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
     data = np.loadtxt(path, delimiter=',').astype(np.int32)
     train_ipv6_list = set()
@@ -174,13 +160,12 @@ def check_duplicate_from_train(prefix_index, ipv6_set):
         temp_ipv6 = format_ipv6(data[i].tolist())
         train_ipv6_list.add(temp_ipv6)
     # check if the ipv6 address is in the training set, if it is, return remove it
-    for ipv6 in ipv6_set:
+    remove_list = []
+    for ipv6 in ipv6_set.keys():
         if ipv6 in train_ipv6_list:
-            ipv6_set.remove(ipv6)
-    # print the first 10 ipv6 addresses in training set
-    print('first 10 ipv6 addresses in training set:')
-
-    return ipv6_set
+            remove_list.append(ipv6)
+    for ipv6 in remove_list:
+        ipv6_set.pop(ipv6)
 
 
 def format_ipv6(ipv6_list):
@@ -208,3 +193,22 @@ def format_ipv6(ipv6_list):
         ipv6_str_list.append(''.join([x for x in temp_section]))
     ipv6_str = ':'.join(ipv6_str_list)
     return ipv6_str
+
+
+def get_vector_ipv6(ipv6_str):
+    # get the standard vector form of an ipv6 address (32 integers)
+    # split the address into 8 16-bit segments
+    segments = ipv6_str.split(':')
+    # if the address ends with "::", append enough zero-filled segments to make 8 total
+    if "" in segments:
+        empty_index = segments.index("")
+        segments[empty_index:empty_index + 1] = ['0'] * (9 - len(segments))
+    # convert each segment to an integer and add it to the result list
+    # create a list of 32 integers
+    result = []
+    for segment in segments:
+        # pad each segment with zeros to 4 characters
+        segment = segment.zfill(4)
+        # convert the segment to 4-bit integers
+        result.extend([int(segment[i], 16) for i in range(0, 4)])
+    return np.array(result)

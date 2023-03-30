@@ -10,7 +10,8 @@ device = config.device
 
 
 def test(model, test_loader):
-    new_address = []
+    # return new address with cluster label together
+    new_address_with_label = dict()
     model.eval()
     with torch.no_grad():
         for batch, c in enumerate(test_loader):
@@ -26,8 +27,15 @@ def test(model, test_loader):
             # save to new_address
             for i in range(pred_x.shape[0]):
                 temp_address = format_ipv6(pred_x[i].tolist())
-                new_address.append(temp_address)
-    return new_address
+                # turn one-hot to label
+                temp_label = c[i].argmax().item()
+                if temp_address not in new_address_with_label:
+                    new_address_with_label[temp_address] = temp_label
+                elif new_address_with_label[temp_address] != temp_label:
+                    print(f"Error: {temp_address} has different cluster label.")
+                    print(f"Old label: {new_address_with_label[temp_address]}, new label: {temp_label}")
+                    new_address_with_label[temp_address] = temp_label
+    return new_address_with_label
 
 
 def test_specific_model(prefix):
@@ -37,13 +45,12 @@ def test_specific_model(prefix):
     model = CVAE(cluster_num).to(device)
     # load corresponding model
     model.load_state_dict(torch.load(config.model_path + f"{prefix}.pth"))
-    new_address = test(model, test_loader)
-    # remove duplicate
-    new_address = list(set(new_address))
-    print(f"New address number before removing duplicate from train data: {len(new_address)}")
+    # the new address saved in a dict
+    new_address_with_labels = test(model, test_loader)
+    print(f"New address number before removing duplicate from train data: {len(new_address_with_labels)}")
     # remove duplicate from train data
-    new_address = check_duplicate_from_train(prefix, new_address)
-    print(f"New address number: {len(new_address)}")
+    check_duplicate_from_train(prefix, new_address_with_labels)
+    print(f"New address number: {len(new_address_with_labels)}")
     # # save new_address to file
     # with open(config.new_address_path + f"{prefix}.txt", "w") as f:
     #     for address in new_address:
@@ -52,14 +59,18 @@ def test_specific_model(prefix):
     # mkdir "prefix" if not exists
     if not os.path.exists(config.new_address_path + f"{prefix}"):
         os.mkdir(config.new_address_path + f"{prefix}")
+    else:
+        # remove all files in the folder, in case of mixing up old and new files
+        file_list = os.listdir(config.new_address_path + f"{prefix}")
+        for file in file_list:
+            os.remove(config.new_address_path + f"{prefix}/{file}")
 
-    cluster_labels = test_loader.dataset.get_cluster_labels()
     # save new_address to different file according to cluster label
     for i in range(cluster_num):
         with open(config.new_address_path + f"{prefix}/{i}.txt", "w") as f:
-            for k in range(len(new_address)):
-                if cluster_labels[k] == i:
-                    f.write(f"{new_address[k]}\n")
+            for address, label in new_address_with_labels.items():
+                if label == i:
+                    f.write(f"{address}\n")
 
 
 def test_multiple_model(prefix_list):

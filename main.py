@@ -12,12 +12,15 @@ def main():
     # detect if cluster_num.txt exists
     # if not os.path.exists(config.cluster_num_path):
     #     init_cluster_num()
-    train_specific_model(400)
-    test_specific_model(400)
+    # train_specific_model(1)
+    test_specific_model(1)
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+
+    from utils import get_vector_ipv6
+    print(get_vector_ipv6("2001:1291:1df7:279b::a"))
 
     # import numpy as np
     # from utils import init_cluster_info, update_cluster_info
