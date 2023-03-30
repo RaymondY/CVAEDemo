@@ -72,6 +72,9 @@ def test_specific_model(prefix):
                 if label == i:
                     f.write(f"{address}\n")
 
+    # run zmap for each cluster
+    run_zmap(prefix)
+
 
 def test_multiple_model(prefix_list):
     for prefix in prefix_list:
@@ -83,3 +86,13 @@ def test_all_model():
     prefix_num = len(file_list)
     for prefix in range(prefix_num):
         test_specific_model(prefix)
+
+
+def run_zmap(prefix, local_ipv6="2402:f000:6:1401:46a8:42ff:fe43:6d00"):
+    result_dir = config.result_path + '{prefix}/'.format(prefix=prefix)
+    cluster_num = os.listdir(result_dir).__len__()
+    for i in range(cluster_num):
+        print(f"Running zmap for prefix {prefix}, cluster {i}...")
+        os.system(f"sudo zmap --ipv6-source-ip={local_ipv6} "
+                  f"--ipv6-target-file={config.new_address_path}{prefix}/{i}.txt "
+                  f"-o {result_dir}output_{i}.txt -M icmp6_echoscan -B 10M")

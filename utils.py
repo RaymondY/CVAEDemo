@@ -45,7 +45,7 @@ class AddressDataset(Dataset):
         return len(self.data)
 
 
-class RefineAddressDataset(Dataset):
+class FineTuningAddressDataset(Dataset):
     # refine the address dataset using validated new addresses
     def __init__(self, prefix_index):
         self.prefix_index = prefix_index
