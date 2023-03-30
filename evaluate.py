@@ -96,8 +96,6 @@ def run_zmap(prefix, local_ipv6="2402:f000:6:1401:46a8:42ff:fe43:6d00"):
     cluster_num = os.listdir(new_address_dir).__len__()
     for i in range(cluster_num):
         print(f"Running zmap for prefix {prefix}, cluster {i}...")
-        # print result_file path
-        print(f"Result file path: {result_dir}output_{i}.txt")
         os.system(f"sudo zmap --ipv6-source-ip={local_ipv6} "
                   f"--ipv6-target-file={new_address_dir}{i}.txt "
-                  f"-o {result_dir}output_{i}.txt -M icmp6_echoscan -B 10M")
+                  f"-o {result_dir}{i}.txt -M icmp6_echoscan -B 10M")

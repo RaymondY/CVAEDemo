@@ -114,6 +114,12 @@ def load_test_data(prefix_index, sample_num=5000):
     return dataloader
 
 
+def load_fine_tuning_data(prefix_index):
+    dataset = FineTuningAddressDataset(prefix_index)
+    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+    return dataloader
+
+
 def init_cluster_info():
     file_list = os.listdir(config.data_path)
     prefix_num = len(file_list)

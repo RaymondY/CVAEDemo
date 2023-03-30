@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from utils import load_train_data, get_cluster_num
+from utils import load_train_data, load_fine_tuning_data, get_cluster_num
 from cvae import CVAE
 from config import DefaultConfig
 
@@ -31,11 +31,12 @@ def loss_func(pred_x, x, z_mu, z_log_var, z):
     return -torch.mean(log_p_x_z + config.beta * (log_p_z - log_q_z_x))
 
 
-def train(train_loader, model, prefix):
-    optimizer = optim.Adam(model.parameters(), lr=config.lr)
+def train(train_loader, model, prefix,
+          lr=config.lr, epoch_num=config.epoch_num, model_path=config.model_path):
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     model.train()
-    for epoch in range(config.epoch_num):
+    for epoch in range(epoch_num):
         running_loss = 0.0
         with tqdm(train_loader, desc=f"Epoch: {epoch + 1}", unit="batch") as tepoch:
             for batch, (x, c) in enumerate(tepoch):
@@ -54,7 +55,7 @@ def train(train_loader, model, prefix):
         scheduler.step()
 
     # save model
-    torch.save(model.state_dict(), config.model_path + f"{prefix}.pth")
+    torch.save(model.state_dict(), model_path + f"{prefix}.pth")
 
 
 def train_specific_model(prefix):
@@ -75,3 +76,29 @@ def train_all_model():
     prefix_num = len(file_list)
     for prefix in range(prefix_num):
         train_specific_model(prefix)
+
+
+def fine_tuning_specific_model(prefix, lr=config.lr * 0.1, epoch_num=config.epoch_num,
+                               load_model_path=config.model_path, save_model_path=config.model_path):
+    print(f"Fine tuning model for prefix {prefix}...")
+    train_loader = load_train_data(prefix)
+    cluster_num = get_cluster_num(prefix)
+    model = CVAE(cluster_num).to(device)
+    model.load_state_dict(torch.load(load_model_path + f"{prefix}.pth"))
+    train(train_loader, model, prefix, lr=lr, epoch_num=epoch_num, model_path=save_model_path)
+
+
+def fine_tuning_multiple_model(prefix_list, lr=config.lr * 0.1, epoch_num=config.epoch_num,
+                               load_model_path=config.model_path, save_model_path=config.model_path):
+    for prefix in prefix_list:
+        fine_tuning_specific_model(prefix, lr=lr, epoch_num=epoch_num,
+                                   load_model_path=load_model_path, save_model_path=save_model_path)
+
+
+def fine_tuning_all_model(lr=config.lr * 0.1, epoch_num=config.epoch_num,
+                          load_model_path=config.model_path, save_model_path=config.model_path):
+    file_list = os.listdir(config.data_path)
+    prefix_num = len(file_list)
+    for prefix in range(prefix_num):
+        fine_tuning_specific_model(prefix, lr=lr, epoch_num=epoch_num,
+                                   load_model_path=load_model_path, save_model_path=save_model_path)
