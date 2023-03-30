@@ -79,9 +79,9 @@ def train_all_model():
 
 
 def fine_tuning_specific_model(prefix, lr=config.lr * 0.1, epoch_num=config.epoch_num,
-                               load_model_path=config.model_path, save_model_path=config.model_path):
+                               load_model_path=config.model_path, save_model_path=config.model_fined_path):
     print(f"Fine tuning model for prefix {prefix}...")
-    train_loader = load_train_data(prefix)
+    train_loader = load_fine_tuning_data(prefix)
     cluster_num = get_cluster_num(prefix)
     model = CVAE(cluster_num).to(device)
     model.load_state_dict(torch.load(load_model_path + f"{prefix}.pth"))
@@ -89,14 +89,14 @@ def fine_tuning_specific_model(prefix, lr=config.lr * 0.1, epoch_num=config.epoc
 
 
 def fine_tuning_multiple_model(prefix_list, lr=config.lr * 0.1, epoch_num=config.epoch_num,
-                               load_model_path=config.model_path, save_model_path=config.model_path):
+                               load_model_path=config.model_path, save_model_path=config.model_fined_path):
     for prefix in prefix_list:
         fine_tuning_specific_model(prefix, lr=lr, epoch_num=epoch_num,
                                    load_model_path=load_model_path, save_model_path=save_model_path)
 
 
 def fine_tuning_all_model(lr=config.lr * 0.1, epoch_num=config.epoch_num,
-                          load_model_path=config.model_path, save_model_path=config.model_path):
+                          load_model_path=config.model_path, save_model_path=config.model_fined_path):
     file_list = os.listdir(config.data_path)
     prefix_num = len(file_list)
     for prefix in range(prefix_num):

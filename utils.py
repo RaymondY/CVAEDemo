@@ -55,13 +55,29 @@ class FineTuningAddressDataset(Dataset):
         self.labels = []
         for i in range(self.cluster_num):
             path = self.dir + '{cluster_index}.txt'.format(cluster_index=i)
-            cluster_data = np.loadtxt(path, delimiter=',').astype(np.int32)
-            # apply get_vector_ipv6 to each row, get the vector representation of ipv6 address
-            cluster_data = np.apply_along_axis(get_vector_ipv6, 1, cluster_data)
+            # load string data, each row has only one string address
+            with open(path, 'r') as f:
+                cluster_data = f.readlines()
+            cluster_size = cluster_data.__len__()
+            if cluster_size == 0:
+                print(f"No new address in cluster {i}")
+                continue
+            # remove the last '\n' in each row
+            cluster_data = [address[:-1] for address in cluster_data]
+            for j in range(cluster_data.__len__()):
+                # convert string address to vector
+                cluster_data[j] = get_vector_ipv6(cluster_data[j])
             self.data.append(cluster_data)
-            self.labels.append(np.eye(self.cluster_num)[i].astype(int))
+            # generate cluster labels one-hot
+            cluster_labels = np.zeros(cluster_size, dtype=int)
+            cluster_labels[:] = i
+            cluster_labels_one_hot = np.eye(self.cluster_num)[cluster_labels].astype(int)
+            self.labels.append(cluster_labels_one_hot)
         self.data = np.concatenate(self.data, axis=0)
         self.labels = np.concatenate(self.labels, axis=0)
+        print(self.data.shape)
+        print(self.labels.shape)
+        
 
     def __getitem__(self, index):
         return self.data[index], self.labels[index]

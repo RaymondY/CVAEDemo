@@ -14,6 +14,7 @@ class DefaultConfig(object):
     current_path = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(current_path, 'data/')
     model_path = os.path.join(current_path, 'model/')
+    model_fined_path = os.path.join(current_path, 'model_fined/')
     new_address_path = os.path.join(current_path, 'new_address/')
     result_path = os.path.join(current_path, 'result/')
     cluster_info_path = os.path.join(current_path, 'cluster_info.txt')
