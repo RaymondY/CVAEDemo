@@ -74,7 +74,8 @@ def train_multiple_model(prefix_list):
 def train_all_model():
     file_list = os.listdir(config.data_path)
     prefix_num = len(file_list)
-    for prefix in range(prefix_num):
+    # for prefix in range(prefix_num):
+    for prefix in range(354,463):
         train_specific_model(prefix)
 
 

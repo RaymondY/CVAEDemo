@@ -39,3 +39,6 @@ class DefaultConfig(object):
 
     # current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     # log_dir = 'logs/gradient_tape/' + current_time
+
+    prefix_budget = 5000  
+    growth_factor = 10

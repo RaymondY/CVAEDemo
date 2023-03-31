@@ -1,7 +1,10 @@
 import os
 import numpy as np
+import pandas as pd 
 import torch
-from utils import load_test_data, get_cluster_num, format_ipv6, check_duplicate_from_train
+import subprocess, re
+from utils import load_test_data, get_cluster_num, format_ipv6, \
+    check_duplicate_from_train, tran_ipv6, read_file, alias_detection
 from cvae import CVAE
 from config import DefaultConfig
 
@@ -38,9 +41,9 @@ def test(model, test_loader):
     return new_address_with_label
 
 
-def test_specific_model(prefix):
+def test_specific_model(prefix, sample_num):
     print(f"Testing model for prefix {prefix}...")
-    test_loader = load_test_data(prefix)
+    test_loader = load_test_data(prefix, sample_num)
     cluster_num = get_cluster_num(prefix)
     model = CVAE(cluster_num).to(device)
     # load corresponding model
@@ -66,14 +69,107 @@ def test_specific_model(prefix):
             os.remove(config.new_address_path + f"{prefix}/{file}")
 
     # save new_address to different file according to cluster label
-    for i in range(cluster_num):
-        with open(config.new_address_path + f"{prefix}/{i}.txt", "w") as f:
-            for address, label in new_address_with_labels.items():
-                if label == i:
-                    f.write(f"{address}\n")
+    df_new_address_label =  pd.DataFrame(list(new_address_with_labels.items()),columns=['address', 'label'])
+    path = config.new_address_path + f"gen_{prefix}.txt"
+    df_new_address_label["address"].to_csv(path, sep=',', header=False, index=False)
 
-    # run zmap for each cluster
-    run_zmap(prefix)
+    # run zmap for prefix
+    hitrate = run_zmap(prefix)
+
+    list_active_address = read_file(config.result_path + f"scan_gen_{prefix}.txt")   
+    ip_list = []                                                                                                                                                                                                               
+    for i, val in enumerate(list_active_address):
+            ip_list.append(tran_ipv6(val))
+    df_active_address = pd.DataFrame(ip_list, columns=['address'])
+    df_active_address_label = pd.merge(df_active_address, df_new_address_label, on = ['address'])
+    num_active_address = df_active_address_label.shape[0]
+    
+    list_alias_prefix = []
+    if df_active_address_label.shape[0] > 1 :
+        list_alias_prefix = list_alias_prefix + alias_detection(df_active_address_label, prefix)
+        print('alias prefix :', list_alias_prefix)
+        if list_alias_prefix != []:
+            #删除别名地址影响
+            for alias_prefix in list_alias_prefix:
+                df_active_address_label =df_active_address_label.loc[df_active_address_label['address'].apply(lambda s: re.search(alias_prefix, s) == None)].reset_index(drop=True)
+            print('active adress after del alias:',df_active_address_label.shape[0])
+    
+    num_no_alias_active_address = df_active_address_label.shape[0]
+    num_alias_active_address = num_active_address - num_no_alias_active_address
+    num_new_address = df_new_address_label.shape[0]
+    no_alias_hitrate = round(num_no_alias_active_address/(num_new_address - num_alias_active_address) * 100, 2)
+    print('no_alias_hitrate: ', no_alias_hitrate)
+    path = config.result_path + 'init_no_alias_{prefix}.txt'.format(prefix=prefix)
+    df_active_address_label.to_csv(path, sep=',', index=False)
+
+    return hitrate, no_alias_hitrate, list_alias_prefix
+
+
+def test_iter_specific_model(prefix, counter_label):
+    print(f"Testing model for prefix {prefix}...")
+    test_loader = load_test_data(prefix, sample_num)
+    cluster_num = get_cluster_num(prefix)
+    model = CVAE(cluster_num).to(device)
+    # load corresponding model
+    model.load_state_dict(torch.load(config.model_path + f"{prefix}.pth"))
+    # the new address saved in a dict
+    new_address_with_labels = test(model, test_loader)
+    print(f"New address number before removing duplicate from train data: {len(new_address_with_labels)}")
+    # remove duplicate from train data
+    check_duplicate_from_train(prefix, new_address_with_labels)
+    print(f"New address number: {len(new_address_with_labels)}")
+    # # save new_address to file
+
+
+
+
+    # mkdir "prefix" if not exists
+    if not os.path.exists(config.new_address_path + f"{prefix}"):
+        os.mkdir(config.new_address_path + f"{prefix}")
+    else:
+        # remove all files in the folder, in case of mixing up old and new files
+        file_list = os.listdir(config.new_address_path + f"{prefix}")
+        for file in file_list:
+            os.remove(config.new_address_path + f"{prefix}/{file}")
+
+    # save new_address to different file according to cluster label
+    df_new_address_label =  pd.DataFrame(list(new_address_with_labels.items()),columns=['address', 'label'])
+    path = config.new_address_path + f"gen_{prefix}.txt"
+    df_new_address_label["address"].to_csv(path, sep=',', header=False, index=False)
+
+    # run zmap for prefix
+    hitrate = run_zmap(prefix)
+
+    list_active_address = read_file(config.result_path + f"scan_gen_{prefix}.txt")   
+    ip_list = []                                                                                                                                                                                                               
+    for i, val in enumerate(list_active_address):
+            ip_list.append(tran_ipv6(val))
+    df_active_address = pd.DataFrame(ip_list, columns=['address'])
+    df_active_address_label = pd.merge(df_active_address, df_new_address_label, on = ['address'])
+    num_active_address = df_active_address_label.shape[0]
+    
+    list_alias_prefix = []
+    if df_active_address_label.shape[0] > 1 :
+        list_alias_prefix = list_alias_prefix + alias_detection(df_active_address_label, prefix)
+        print('alias prefix :', list_alias_prefix)
+        if list_alias_prefix != []:
+            #删除别名地址影响
+            for alias_prefix in list_alias_prefix:
+                df_active_address_label =df_active_address_label.loc[df_active_address_label['address'].apply(lambda s: re.search(alias_prefix, s) == None)].reset_index(drop=True)
+            print('active adress after del alias:',df_active_address_label.shape[0])
+    
+    num_no_alias_active_address = df_active_address_label.shape[0]
+    num_alias_active_address = num_active_address - num_no_alias_active_address
+    num_new_address = df_new_address_label.shape[0]
+    no_alias_hitrate = round(num_no_alias_active_address/(num_new_address - num_alias_active_address) * 100, 2)
+    print('no_alias_hitrate: ', no_alias_hitrate)
+    path = config.result_path + 'init_no_alias_{prefix}.txt'.format(prefix=prefix)
+    df_active_address_label.to_csv(path, sep=',', index=False)
+
+    return hitrate, no_alias_hitrate, list_alias_prefix
+
+
+
 
 
 def test_multiple_model(prefix_list):
@@ -91,11 +187,15 @@ def test_all_model():
 def run_zmap(prefix, local_ipv6="2402:f000:6:1401:46a8:42ff:fe43:6d00"):
     if not os.path.exists(config.result_path + f"{prefix}"):
         os.mkdir(config.result_path + f"{prefix}")
-    result_dir = config.result_path + '{prefix}/'.format(prefix=prefix)
-    new_address_dir = config.new_address_path + '{prefix}/'.format(prefix=prefix)
-    cluster_num = os.listdir(new_address_dir).__len__()
-    for i in range(cluster_num):
-        print(f"Running zmap for prefix {prefix}, cluster {i}...")
-        os.system(f"sudo zmap --ipv6-source-ip={local_ipv6} "
-                  f"--ipv6-target-file={new_address_dir}{i}.txt "
-                  f"-o {result_dir}{i}.txt -M icmp6_echoscan -B 10M")
+    result_dir = config.result_path + 'scan_gen_{prefix}'.format(prefix=prefix)
+    new_address_dir = config.new_address_path + 'gen_{prefix}'.format(prefix=prefix)
+    print(f"Running zmap for prefix {prefix}...")
+    cmd = (f"sudo zmap --ipv6-source-ip={local_ipv6} "
+                f"--ipv6-target-file={new_address_dir}.txt "
+                f"-o {result_dir}.txt -M icmp6_echoscan -B 10M --verbosity=0")
+
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    hitrate = re.findall(r"\d+\.?\d*",p.communicate()[1][-10:].decode('utf-8'))
+    print("hitrate: ", hitrate)
+
+    return hitrate
