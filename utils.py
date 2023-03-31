@@ -1,9 +1,14 @@
-import os, csv, pyasn, re
-import math, random, subprocess, shutil
+import csv
+import os
+import pyasn
+import random
+import re
+import shutil
+import subprocess
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
 from sklearn.cluster import DBSCAN
+from torch.utils.data import Dataset, DataLoader
 from config import DefaultConfig
 
 config = DefaultConfig()
@@ -51,35 +56,15 @@ class FineTuningAddressDataset(Dataset):
     # refine the address dataset using validated new addresses
     def __init__(self, prefix_index):
         self.prefix_index = prefix_index
-        self.dir = config.result_path + '{prefix_index}/'.format(prefix_index=prefix_index)
-        self.cluster_num = os.listdir(self.dir).__len__()
-        self.data = []
-        self.labels = []
-        for i in range(self.cluster_num):
-            path = self.dir + '{cluster_index}.txt'.format(cluster_index=i)
-            # load string data, each row has only one string address
-            with open(path, 'r') as f:
-                cluster_data = f.readlines()
-            cluster_size = cluster_data.__len__()
-            if cluster_size == 0:
-                print(f"No new address in cluster {i}")
-                continue
-            # remove the last '\n' in each row
-            cluster_data = [address[:-1] for address in cluster_data]
-            for j in range(cluster_data.__len__()):
-                # convert string address to vector
-                cluster_data[j] = get_vector_ipv6(cluster_data[j])
-            self.data.append(cluster_data)
-            # generate cluster labels one-hot
-            cluster_labels = np.zeros(cluster_size, dtype=int)
-            cluster_labels[:] = i
-            cluster_labels_one_hot = np.eye(self.cluster_num)[cluster_labels].astype(int)
-            self.labels.append(cluster_labels_one_hot)
-        self.data = np.concatenate(self.data, axis=0)
-        self.labels = np.concatenate(self.labels, axis=0)
-        print(self.data.shape)
-        print(self.labels.shape)
-        
+        # read new addresses from config.zmap_result_path + f"no_alias_{prefix}.txt"
+        # the first column is the address, the second column is the label
+        self.path = config.zmap_result_path + f"no_alias_{self.prefix_index}.txt"
+        self.data_with_label = np.loadtxt(self.path, delimiter=',')
+        # turn address into vector by format_str_to_vector function
+        self.data = np.array([format_str_to_vector(address) for address in self.data_with_label[:, 0]])
+        # turn label into one-hot vector
+        cluster_num = get_cluster_num(self.prefix_index)
+        self.labels = np.eye(cluster_num)[self.data_with_label[:, 1].astype(int)].astype(int)
 
     def __getitem__(self, index):
         return self.data[index], self.labels[index]
@@ -181,7 +166,7 @@ def check_duplicate_from_train(prefix_index, ipv6_set):
     train_ipv6_list = set()
     for i in range(data.shape[0]):
         # format the ipv6 address
-        temp_ipv6 = format_ipv6(data[i].tolist())
+        temp_ipv6 = format_vector_to_standard(data[i].tolist())
         train_ipv6_list.add(temp_ipv6)
     # check if the ipv6 address is in the training set, if it is, return remove it
     remove_list = []
@@ -192,7 +177,29 @@ def check_duplicate_from_train(prefix_index, ipv6_set):
         ipv6_set.pop(ipv6)
 
 
-def format_ipv6(ipv6_list):
+def check_duplicate_from_bank(prefix_index, ipv6_set):
+    # check if the ipv6 address is in the bank
+    # ipv6_set is a dict, the key is the ipv6 address and the value is the cluster label
+    # check if the bank prefix_index exists
+    path = config.address_bank_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
+    if not os.path.exists(path):
+        return
+    # the bank and keys of ipv6_set are in the standard format
+    bank_ipv6_list = set()
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        bank_ipv6_list.add(line.strip())
+    # check if the ipv6 address is in the bank, if it is, return remove it
+    remove_list = []
+    for ipv6 in ipv6_set.keys():
+        if ipv6 in bank_ipv6_list:
+            remove_list.append(ipv6)
+    for ipv6 in remove_list:
+        ipv6_set.pop(ipv6)
+
+
+def format_vector_to_standard(ipv6_list):
     # format an ipv6 address in list form to a standard ipv6 address string
     # ipv6_list: a list of 32 integers
     for i in range(len(ipv6_list)):
@@ -219,7 +226,7 @@ def format_ipv6(ipv6_list):
     return ipv6_str
 
 
-def get_vector_ipv6(ipv6_str):
+def format_str_to_vector(ipv6_str):
     # get the standard vector form of an ipv6 address (32 integers)
     # split the address into 8 16-bit segments
     segments = ipv6_str.split(':')
@@ -227,7 +234,7 @@ def get_vector_ipv6(ipv6_str):
     if "" in segments:
         empty_index = segments.index("")
         segments[empty_index:empty_index + 1] = ['0'] * (9 - len(segments))
-    # convert each segment to an integer and add it to the result list
+    # convert each segment to an integer and add it to the zmap_result list
     # create a list of 32 integers
     result = []
     for segment in segments:
@@ -238,6 +245,32 @@ def get_vector_ipv6(ipv6_str):
     return np.array(result)
 
 
+def format_str_to_standard(ipv6_str):
+    ipv6_vector = format_str_to_vector(ipv6_str)
+    ipv6_str = format_vector_to_standard(ipv6_vector)
+    return ipv6_str
+
+
+def read_address_without_label(file):
+    # the first column is the ipv6 address
+    # return a list of ipv6 address
+    address_list = []
+    with open(file, 'r') as cvsfile:
+        reader = csv.reader(cvsfile)
+        for row in reader:
+            address = row[0]
+            address_list.append(address)
+    return address_list
+
+
+def copy_model(prefix_index):
+    source_path = config.model_path + "{prefix_index}.pth".format(prefix_index=prefix_index)
+    target_path = config.model_fined_path + "{prefix_index}.pth".format(prefix_index=prefix_index)
+    shutil.copyfile(source_path, target_path)
+
+
+############################################################################################################
+# need to simplify the code
 def read_file(file):
     ip_list = []
     filename = file
@@ -248,22 +281,8 @@ def read_file(file):
             ip_list.append(ip)
     return ip_list
 
-def copy_model(prefix_index):
-    source_path = config.model_path + "{prefix_index}".format(prefix_index=prefix_index)
-    target_path = config.model_fined_path + "{prefix_index}".format(prefix_index=prefix_index)
-    
-    if not os.path.exists(target_path):
-        # 如果目标路径不存在原文件夹的话就创建
-        os.makedirs(target_path)
-    
-    if os.path.exists(source_path):
-        # 如果目标路径存在原文件夹的话就先删除
-        shutil.rmtree(target_path)
-    # print('&&&&&&&&&*************')
-    shutil.copytree(source_path, target_path)
-
 def tran_ipv6(sim_ip):
-    if sim_ip == "::":     
+    if sim_ip == "::":
         return "0000:0000:0000:0000:0000:0000:0000:0000"
     ip_list = ["0000", "0000", "0000", "0000", "0000", "0000", "0000", "0000"]
     if sim_ip.startswith("::"):
@@ -296,16 +315,18 @@ def tran_ipv6(sim_ip):
     # print(ip_list)
     return ":".join(ip_list)
 
+
 def pandas_entropy(column, base=None):
     a = pd.value_counts(column) / len(column)
     return sum(np.log2(a) * a * (-1))
 
+
 def alias_detection(df_entropy, prefix_index):
     asndb = pyasn.pyasn('ipasn.20220916.dat')
-    as_num = asndb.lookup(df_entropy.iloc[0,0])[0]
-    prefix = asndb.lookup(df_entropy.iloc[0,0])[1]
-    len_prefix = int(int(re.findall('/(.*)',prefix)[0])/4)
-    df_entropy = df_entropy["address"].str.replace(':','').astype(str).to_frame()
+    as_num = asndb.lookup(df_entropy.iloc[0, 0])[0]
+    prefix = asndb.lookup(df_entropy.iloc[0, 0])[1]
+    len_prefix = int(int(re.findall('/(.*)', prefix)[0]) / 4)
+    df_entropy = df_entropy["address"].str.replace(':', '').astype(str).to_frame()
 
     list_all = []
     for index, row in df_entropy.iterrows():
@@ -316,17 +337,17 @@ def alias_detection(df_entropy, prefix_index):
     entro_list = []
     count_list = []
     for i in range(32):
-        per_entro = round(pandas_entropy(df_entropy.iloc[:,i], base=None), 2)
+        per_entro = round(pandas_entropy(df_entropy.iloc[:, i], base=None), 2)
         entro_list.append(per_entro)
-        count = df_entropy.iloc[:,i].value_counts()
+        count = df_entropy.iloc[:, i].value_counts()
         # print('************ ', i + 1)
         # print(count)
         count_list.append(count.index[0])
     # print(entro_list)
-    #求相邻差值
-    v1 = entro_list[len_prefix-1:32]
+    # 求相邻差值
+    v1 = entro_list[len_prefix - 1:32]
     v2 = entro_list[len_prefix:]
-    entro_diff = list(map(lambda x: x[0]-x[1], zip(v2, v1)))
+    entro_diff = list(map(lambda x: x[0] - x[1], zip(v2, v1)))
     entro_diff_1 = np.array(list(map(abs, entro_diff)))
     en_values = np.mean(entro_diff_1)
     # print('entro_diff:',list(np.round(np.array(entro_diff),2)),len(entro_diff), en_values)
@@ -336,16 +357,16 @@ def alias_detection(df_entropy, prefix_index):
             break
 
     # print(entro_diff_max)
-    count_max = df_entropy.iloc[:,entro_diff_max].value_counts()
+    count_max = df_entropy.iloc[:, entro_diff_max].value_counts()
 
-    adr_list_16 = [count_list]*16
+    adr_list_16 = [count_list] * 16
     df_16 = pd.DataFrame(data=adr_list_16)
 
     entro_array = np.array(entro_list)
     entro_mean = np.mean(entro_array[len_prefix:])
 
     df = pd.DataFrame(data=None)
-    list_16_seed = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f']
+    list_16_seed = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
 
     test_alias_bit = []
     # for i in range(len_prefix,31):
@@ -358,14 +379,13 @@ def alias_detection(df_entropy, prefix_index):
     #             j = j+1
     #         df = pd.concat([df,df_temp], axis=0)
 
-    test_alias_bit.append(entro_diff_max-1)
+    test_alias_bit.append(entro_diff_max - 1)
     df_temp = df_16.copy()
     for j in range(entro_diff_max, 32):
         random.shuffle(list_16_seed)
-        df_temp.iloc[:,j] = list_16_seed
-        j = j+1
-    df = pd.concat([df,df_temp], axis=0)
-
+        df_temp.iloc[:, j] = list_16_seed
+        j = j + 1
+    df = pd.concat([df, df_temp], axis=0)
 
     test_alias_bit_value = []
     for i in range(len(count_max)):
@@ -373,70 +393,69 @@ def alias_detection(df_entropy, prefix_index):
         value_bit = count_max.index[i]
         test_alias_bit_value.append(value_bit)
         df_temp = df_16.copy()
-        df_temp.iloc[:,entro_diff_max] = [value_bit] * 16
-        for j in range(entro_diff_max+1, 32):
+        df_temp.iloc[:, entro_diff_max] = [value_bit] * 16
+        for j in range(entro_diff_max + 1, 32):
             random.shuffle(list_16_seed)
-            df_temp.iloc[:,j] = list_16_seed
-            j = j+1
-        df = pd.concat([df,df_temp], axis=0)
+            df_temp.iloc[:, j] = list_16_seed
+            j = j + 1
+        df = pd.concat([df, df_temp], axis=0)
 
-    df["ipv6"] =  df.iloc[:,0] + df.iloc[:,1] + df.iloc[:,2] + df.iloc[:,3] + ":" + \
-                    df.iloc[:,4] + df.iloc[:,5] + df.iloc[:,6] + df.iloc[:,7] + ":" + \
-                    df.iloc[:,8] + df.iloc[:,9] + df.iloc[:,10] + df.iloc[:,11] + ":" + \
-                    df.iloc[:,12] + df.iloc[:,13] + df.iloc[:,14] + df.iloc[:,15] + ":" + \
-                    df.iloc[:,16] + df.iloc[:,17] + df.iloc[:,18] + df.iloc[:,19] + ":" + \
-                    df.iloc[:,20] + df.iloc[:,21] + df.iloc[:,22] + df.iloc[:,23] + ":" + \
-                    df.iloc[:,24] + df.iloc[:,25] + df.iloc[:,26] + df.iloc[:,27] + ":" + \
-                    df.iloc[:,28] + df.iloc[:,29] + df.iloc[:,30] + df.iloc[:,31]
+    df["ipv6"] = df.iloc[:, 0] + df.iloc[:, 1] + df.iloc[:, 2] + df.iloc[:, 3] + ":" + \
+                 df.iloc[:, 4] + df.iloc[:, 5] + df.iloc[:, 6] + df.iloc[:, 7] + ":" + \
+                 df.iloc[:, 8] + df.iloc[:, 9] + df.iloc[:, 10] + df.iloc[:, 11] + ":" + \
+                 df.iloc[:, 12] + df.iloc[:, 13] + df.iloc[:, 14] + df.iloc[:, 15] + ":" + \
+                 df.iloc[:, 16] + df.iloc[:, 17] + df.iloc[:, 18] + df.iloc[:, 19] + ":" + \
+                 df.iloc[:, 20] + df.iloc[:, 21] + df.iloc[:, 22] + df.iloc[:, 23] + ":" + \
+                 df.iloc[:, 24] + df.iloc[:, 25] + df.iloc[:, 26] + df.iloc[:, 27] + ":" + \
+                 df.iloc[:, 28] + df.iloc[:, 29] + df.iloc[:, 30] + df.iloc[:, 31]
 
-   
     df = df[['ipv6']]
     # print(df)
-    df_path = config.result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index)
+    df_path = config.zmap_result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index)
     df.to_csv(df_path, header=False, index=False)
     zmap_file = 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index)
 
-    cmd2 = 'sudo zmap --ipv6-source-ip=2402:f000:6:1401:46a8:42ff:fe43:6d00 --ipv6-target-file=' + df_path + ' -o ' + config.result_path + 'scan_' + zmap_file  + ' -M icmp6_echoscan -B 10M --verbosity=0'
+    cmd2 = 'sudo zmap --ipv6-source-ip=2402:f000:6:1401:46a8:42ff:fe43:6d00 --ipv6-target-file=' + df_path + ' -o ' + config.result_path + 'scan_' + zmap_file + ' -M icmp6_echoscan -B 10M --verbosity=0'
     p = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    hitrate = re.findall(r"\d+\.?\d*",p.communicate()[1][-10:].decode('utf-8'))
+    hitrate = re.findall(r"\d+\.?\d*", p.communicate()[1][-10:].decode('utf-8'))
     print("alias detection hitrate: ", hitrate)
 
-    if float(hitrate[0]) >= round(16/df.shape[0],2): 
-        list_a = read_file(config.result_path + 'scan_' + zmap_file)   
-        ip_list = []                                                                                                                                                                                                               
+    if float(hitrate[0]) >= round(16 / df.shape[0], 2):
+        list_a = read_file(config.zmap_result_path + 'scan_' + zmap_file)
+        ip_list = []
         for i, val in enumerate(list_a):
-                ip_list.append(tran_ipv6(val))
+            ip_list.append(tran_ipv6(val))
         active_alias_df = pd.DataFrame(ip_list, columns=['ipv6'])
         # print(active_alias_df.shape)
-        active_alias_df['count'] = [1]*active_alias_df.shape[0]
-        df = pd.merge(df, active_alias_df,how='left',on = ['ipv6'])
+        active_alias_df['count'] = [1] * active_alias_df.shape[0]
+        df = pd.merge(df, active_alias_df, how='left', on=['ipv6'])
         # print(df)
         j = 0
         # print(len(test_alias_bit), test_alias_bit)
         alias_prefix_str_1 = []
         for i in range(len(test_alias_bit)):
-            s1 = df.iloc[j:j+16,1].value_counts(dropna=False)
+            s1 = df.iloc[j:j + 16, 1].value_counts(dropna=False)
             # print(df.iloc[j:j+16,0:2])
             # print(s1)
             j = j + 16
             if s1.index[0] == 1 and s1[1] == 16:
-                alias_bit_low = test_alias_bit[i] + 1 
+                alias_bit_low = test_alias_bit[i] + 1
                 alias_prefix_list_1 = count_list[0:alias_bit_low]
-                insert_fuhao_num = int(alias_bit_low/4)
+                insert_fuhao_num = int(alias_bit_low / 4)
                 j = 1
-                for i in range(1,insert_fuhao_num+1):
-                    j = 4*i + i -1
-                    alias_prefix_list_1.insert(j,':')
+                for i in range(1, insert_fuhao_num + 1):
+                    j = 4 * i + i - 1
+                    alias_prefix_list_1.insert(j, ':')
                 alias_prefix_str_1 = ''.join(alias_prefix_list_1)
                 break
-                
+
         # print('**************************')
 
         all_alias_prefix = []
-        insert_fuhao_num = int((entro_diff_max+1)/4)
+        insert_fuhao_num = int((entro_diff_max + 1) / 4)
         j = 16 * len(test_alias_bit)
         for i in range(len(test_alias_bit_value)):
-            s1 = df.iloc[j:j+16,1].value_counts(dropna=False)
+            s1 = df.iloc[j:j + 16, 1].value_counts(dropna=False)
             # print(j)
             # print(df.iloc[j:j+16,0:2])
             # print(s1)
@@ -447,22 +466,22 @@ def alias_detection(df_entropy, prefix_index):
                 alias_prefix_list = count_list[0:entro_diff_max] + [str(test_alias_bit_value[i])]
                 # print(alias_prefix_list)
                 n = 1
-                for m in range(1,insert_fuhao_num+1):
-                    n = 4*m + m -1
-                    alias_prefix_list.insert(n,':')
+                for m in range(1, insert_fuhao_num + 1):
+                    n = 4 * m + m - 1
+                    alias_prefix_list.insert(n, ':')
                 alias_prefix_str = ''.join(alias_prefix_list)
                 all_alias_prefix.append(alias_prefix_str)
             # else:
             #     print('-----------',str(test_alias_bit_value[i]))
-        if  alias_prefix_str_1 != []:
+        if alias_prefix_str_1:
             all_alias_prefix = all_alias_prefix + alias_prefix_str_1
 
-        #删除中间文件
-        os.remove(config.result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
-        os.remove(config.result_path + 'scan_alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
+        # 删除中间文件
+        os.remove(config.zmap_result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
+        os.remove(config.zmap_result_path + 'scan_alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
         return list(set(all_alias_prefix))
     else:
-        #删除中间文件
-        os.remove(config.result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
-        os.remove(config.result_path + 'scan_alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
+        # 删除中间文件
+        os.remove(config.zmap_result_path + 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
+        os.remove(config.zmap_result_path + 'scan_alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index))
         return []

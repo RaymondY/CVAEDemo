@@ -1,8 +1,5 @@
 import os
 import torch
-# from datetime import datetime
-
-# cluster_num = -1
 
 
 class DefaultConfig(object):
@@ -16,7 +13,8 @@ class DefaultConfig(object):
     model_path = os.path.join(current_path, 'model/')
     model_fined_path = os.path.join(current_path, 'model_fined/')
     new_address_path = os.path.join(current_path, 'new_address/')
-    result_path = os.path.join(current_path, 'result/')
+    address_bank_path = os.path.join(current_path, 'address_bank/')
+    zmap_result_path = os.path.join(current_path, 'zmap_result/')
     cluster_info_path = os.path.join(current_path, 'cluster_info.txt')
 
     input_size = 32
@@ -36,9 +34,6 @@ class DefaultConfig(object):
 
     epoch_num = 40
     lr = 1e-3
-
-    # current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
-    # log_dir = 'logs/gradient_tape/' + current_time
 
     prefix_budget = 5000  
     growth_factor = 10

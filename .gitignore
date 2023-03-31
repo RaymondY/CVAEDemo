@@ -11,7 +11,8 @@ data/*
 model/*
 model_fined/*
 new_address/*
-result/*
+zmap_result/*
+address_bank/*
 !.gitkeep
 
 ### macOS template

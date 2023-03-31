@@ -38,6 +38,5 @@ def main():
     train_all_model()
 
 
-
 if __name__ == '__main__':
     main()
