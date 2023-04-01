@@ -6,7 +6,8 @@ import torch
 from config import DefaultConfig
 from cvae import CVAE
 from utils import load_test_data, get_cluster_num, check_duplicate_from_train, check_duplicate_from_bank, \
-    format_vector_to_standard, format_str_to_vector, format_str_to_standard, alias_detection, update_cluster_info
+    format_vector_to_standard, format_str_to_vector, format_str_to_standard, alias_detection, update_cluster_info, \
+    tran_ipv6
 
 config = DefaultConfig()
 device = config.device
@@ -59,13 +60,13 @@ def test_specific_model(prefix, sample_num=5000):
     print(f"New address number: {len(new_address_with_labels)}")
 
     # mkdir "prefix" if not exists
-    if not os.path.exists(config.new_address_path + f"{prefix}"):
-        os.mkdir(config.new_address_path + f"{prefix}")
-    else:
-        # remove all files in the folder, in case of mixing up old and new files
-        file_list = os.listdir(config.new_address_path + f"{prefix}")
-        for file in file_list:
-            os.remove(config.new_address_path + f"{prefix}/{file}")
+    # if not os.path.exists(config.new_address_path + f"{prefix}"):    os.path.exists(config.zmap_result_path
+    #     os.mkdir(config.new_address_path + f"{prefix}")
+    # else:
+    #     # remove all files in the folder, in case of mixing up old and new files
+    #     file_list = os.listdir(config.new_address_path + f"{prefix}")
+    #     for file in file_list:
+    #         os.remove(config.new_address_path + f"{prefix}/{file}")
 
     # save new_address with labels to file
     # new_address_with_labels is a dict
@@ -90,7 +91,7 @@ def test_specific_model(prefix, sample_num=5000):
     zmap_active_address = []
     with open(config.zmap_result_path + f"zmap_gen_{prefix}.txt", 'r') as f:
         for line in f:
-            zmap_active_address.append(format_str_to_standard(line.strip()))
+            zmap_active_address.append(tran_ipv6(line.strip()))
     df_active_address = pd.DataFrame(zmap_active_address, columns=['address'])
 
     # remove duplicate from used generated active address (in the form of standard address)
@@ -128,12 +129,12 @@ def test_specific_model(prefix, sample_num=5000):
     # update the cluster info
     update_cluster_info(prefix, counter_label)
 
-    return hit_rate, hit_rate_no_alias, list_alias_prefix
+    return hit_rate, hit_rate_no_alias, list_alias_prefix, num_new_address
 
 
 def run_zmap(prefix, local_ipv6="2402:f000:6:1401:46a8:42ff:fe43:6d00"):
-    if not os.path.exists(config.zmap_result_path + f"{prefix}"):
-        os.mkdir(config.zmap_result_path + f"{prefix}")
+    # if not os.path.exists(config.zmap_result_path + f"{prefix}"):
+    #     os.mkdir(config.zmap_result_path + f"{prefix}")
     new_address_dir = config.new_address_path + 'gen_{prefix}'.format(prefix=prefix)
     zmap_result_dir = config.zmap_result_path + 'zmap_gen_{prefix}'.format(prefix=prefix)
     print(f"Running zmap for prefix {prefix}...")

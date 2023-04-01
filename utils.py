@@ -415,7 +415,7 @@ def alias_detection(df_entropy, prefix_index):
     df.to_csv(df_path, header=False, index=False)
     zmap_file = 'alias_det_{prefix_index}.txt'.format(prefix_index=prefix_index)
 
-    cmd2 = 'sudo zmap --ipv6-source-ip=2402:f000:6:1401:46a8:42ff:fe43:6d00 --ipv6-target-file=' + df_path + ' -o ' + config.result_path + 'scan_' + zmap_file + ' -M icmp6_echoscan -B 10M --verbosity=0'
+    cmd2 = 'sudo zmap --ipv6-source-ip=2402:f000:6:1401:46a8:42ff:fe43:6d00 --ipv6-target-file=' + df_path + ' -o ' + config.zmap_result_path + 'scan_' + zmap_file + ' -M icmp6_echoscan -B 10M --verbosity=0'
     p = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     hitrate = re.findall(r"\d+\.?\d*", p.communicate()[1][-10:].decode('utf-8'))
     print("alias detection hitrate: ", hitrate)
