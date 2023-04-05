@@ -58,7 +58,7 @@ class FineTuningAddressDataset(Dataset):
         self.prefix_index = prefix_index
         # read new addresses from config.zmap_result_path + f"no_alias_{prefix}.txt"
         # the first column is the address, the second column is the label
-        self.path = config.zmap_result_path + f"no_alias_{self.prefix_index}.txt"
+        self.path = config.new_address_path + f"no_alias_{self.prefix_index}.txt"
         self.data_with_label = np.loadtxt(self.path, delimiter=',')
         # turn address into vector by format_str_to_vector function
         self.data = np.array([format_str_to_vector(address) for address in self.data_with_label[:, 0]])
