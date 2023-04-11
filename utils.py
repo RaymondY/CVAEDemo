@@ -14,14 +14,14 @@ from config import DefaultConfig
 config = DefaultConfig()
 
 
-class AddressDataset(Dataset):
+class InitAddressDataset(Dataset):
     def __init__(self, prefix_index):
         self.prefix_index = prefix_index
         self.path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
         self.data = np.loadtxt(self.path, delimiter=',').astype(np.int32)
         self.sample_num = self.data.shape[0]
         print(self.data.shape)
-        self.labels = self.clustering()
+        self.labels, self.cluster_num = self.clustering()
 
     def clustering(self):
         min_samples_data = np.round(self.sample_num * config.eps_ratio).astype(int)
@@ -38,33 +38,20 @@ class AddressDataset(Dataset):
         cluster_info = np.bincount(cluster_result)
         print(f"cluster_num: {cluster_num}")
         print(f"distribution: {cluster_info}")
-        update_cluster_info(self.prefix_index, cluster_info)
+        # update_init_cluster_info(self.prefix_index, cluster_info)
+        with open(config.init_cluster_info_path, 'r') as f:
+            lines = f.readlines()
+        # join the cluster_labels with ','
+        cluster_labels = ','.join([str(i) for i in cluster_info])
+        lines[self.prefix_index] = cluster_labels + '\n'
+        with open(config.init_cluster_info_path, 'w') as f:
+            for line in lines:
+                f.write(line)
         cluster_result_one_hot = np.eye(cluster_num)[cluster_result].astype(int)
-        return cluster_result_one_hot
+        return cluster_result_one_hot, cluster_num
 
-    def __getitem__(self, index):
-        if self.labels is not None:
-            return self.data[index], self.labels[index]
-        else:
-            return self.data[index]
-
-    def __len__(self):
-        return len(self.data)
-
-
-class FineTuningAddressDataset(Dataset):
-    # refine the address dataset using validated new addresses
-    def __init__(self, prefix_index):
-        self.prefix_index = prefix_index
-        # read new addresses from config.zmap_result_path + f"no_alias_{prefix}.txt"
-        # the first column is the address, the second column is the label
-        self.path = config.new_address_path + f"no_alias_{self.prefix_index}.txt"
-        self.data_with_label = np.loadtxt(self.path, delimiter=',')
-        # turn address into vector by format_str_to_vector function
-        self.data = np.array([format_str_to_vector(address) for address in self.data_with_label[:, 0]])
-        # turn label into one-hot vector
-        cluster_num = get_cluster_num(self.prefix_index)
-        self.labels = np.eye(cluster_num)[self.data_with_label[:, 1].astype(int)].astype(int)
+    def get_cluster_num(self):
+        return self.cluster_num
 
     def __getitem__(self, index):
         return self.data[index], self.labels[index]
@@ -73,17 +60,74 @@ class FineTuningAddressDataset(Dataset):
         return len(self.data)
 
 
-class GenerateDataset(Dataset):
-    def __init__(self, prefix_index, sample_num):
-        # generate sample_num cluster labels for prefix_index
+class IterAddressDataset(Dataset):
+    def __init__(self, prefix_index):
         self.prefix_index = prefix_index
-        self.cluster_distribution = get_cluster_info(prefix_index)
+        # read new addresses from config.zmap_result_path + f"no_alias_{prefix}.txt"
+        # the first column is the address, the second column is the label
+        self.path = config.new_address_path + f"no_alias_{self.prefix_index}.txt"
+        self.data_with_label = np.loadtxt(self.path, delimiter=',')
+        # turn address into vector by format_str_to_vector function
+        self.data = np.array([format_str_to_vector(address) for address in self.data_with_label[:, 0]])
+        self.labels = self.data_with_label[:, 1].astype(int)
+        self.cluster_num = np.unique(self.labels).shape[0]
+        # turn label into one-hot vector
+        self.labels = np.eye(self.cluster_num)[self.data_with_label[:, 1].astype(int)].astype(int)
+
+    def get_cluster_num(self):
+        return self.cluster_num
+
+    def __getitem__(self, index):
+        return self.data[index], self.labels[index]
+
+    def __len__(self):
+        return len(self.data)
+
+
+class InitGenerateDataset(Dataset):
+    def __init__(self, cluster_distribution, budget):
+        self.cluster_distribution = cluster_distribution
         self.cluster_num = len(self.cluster_distribution)
-        self.sample_num = sample_num
+        self.budget = budget
+        temp_sum_cluster_labels = np.sum(self.cluster_distribution)
+        # budget according to the distribution of cluster labels
+        self.budget_per_cluster = np.array(self.cluster_distribution / temp_sum_cluster_labels)
+        self.budget_per_cluster = np.round(self.budget_per_cluster * self.budget).astype(int)
+        print(self.budget_per_cluster)
+        # update the number of samples
+        self.budget = np.sum(self.budget_per_cluster)
+        # generate cluster labels
+        self.cluster_labels = np.zeros(self.budget, dtype=int)
+        start_index = 0
+        for i in range(self.cluster_num):
+            end_index = start_index + self.budget_per_cluster[i]
+            self.cluster_labels[start_index:end_index] = i
+            start_index = end_index
+
+        self.cluster_labels_one_hot = np.eye(self.cluster_num)[self.cluster_labels].astype(int)
+        print(self.cluster_labels_one_hot.shape)
+
+    def get_cluster_num(self):
+        return self.cluster_num
+
+    def __getitem__(self, index):
+        return self.cluster_labels_one_hot[index]
+
+    def __len__(self):
+        return self.budget
+
+
+class IterGenerateDataset(Dataset):
+    def __init__(self, cluster_distribution, budget):
+        # the prefix_index refers to model index
+        # generate sample_num cluster labels for prefix_index
+        self.cluster_distribution = cluster_distribution
+        self.cluster_num = len(self.cluster_distribution)
+        self.budget = budget
         temp_sum_cluster_labels = np.sum(self.cluster_distribution)
         # sample according to the distribution of cluster labels
         self.sample_per_cluster = np.array(self.cluster_distribution / temp_sum_cluster_labels)
-        self.sample_per_cluster = np.round(self.sample_per_cluster * self.sample_num).astype(int)
+        self.sample_per_cluster = np.round(self.sample_per_cluster * self.budget).astype(int)
         print(self.sample_per_cluster)
         # update the number of samples
         self.sample_num = np.sum(self.sample_per_cluster)
@@ -98,6 +142,9 @@ class GenerateDataset(Dataset):
         self.cluster_labels_one_hot = np.eye(self.cluster_num)[self.cluster_labels].astype(int)
         print(self.cluster_labels_one_hot.shape)
 
+    def get_cluster_num(self):
+        return self.cluster_num
+
     def __getitem__(self, index):
         return self.cluster_labels_one_hot[index]
 
@@ -105,60 +152,31 @@ class GenerateDataset(Dataset):
         return self.sample_num
 
 
-def load_train_data(prefix_index):
-    dataset = AddressDataset(prefix_index)
+def load_init_train_data(prefix_index):
+    dataset = InitAddressDataset(prefix_index)
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
     return dataloader
 
 
-def load_test_data(prefix_index, sample_num=5000):
-    dataset = GenerateDataset(prefix_index, sample_num)
+def load_init_probe_label(cluster_distribution, budget):
+    dataset = InitGenerateDataset(cluster_distribution, budget)
     dataloader = DataLoader(dataset, batch_size=config.test_batch_size, shuffle=False, drop_last=False)
     return dataloader
 
 
-def load_fine_tuning_data(prefix_index):
-    dataset = FineTuningAddressDataset(prefix_index)
+def load_iter_train_data(prefix_index):
+    dataset = IterAddressDataset(prefix_index)
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
     return dataloader
 
 
-def init_cluster_info():
-    file_list = os.listdir(config.data_path)
-    prefix_num = len(file_list)
-    with open(config.cluster_info_path, 'w') as f:
-        for i in range(prefix_num):
-            f.write('-1\n')
+def load_iter_probe_label(cluster_distribution, budget):
+    dataset = IterGenerateDataset(cluster_distribution, budget)
+    dataloader = DataLoader(dataset, batch_size=config.test_batch_size, shuffle=False, drop_last=False)
+    return dataloader
 
 
-def update_cluster_info(prefix_index, cluster_labels):
-    # update the cluster info for prefix_index
-    # cluster_labels: the number of each cluster
-    with open(config.cluster_info_path, 'r') as f:
-        lines = f.readlines()
-    # join the cluster_labels with ','
-    cluster_labels = ','.join([str(i) for i in cluster_labels])
-    lines[prefix_index] = cluster_labels + '\n'
-    with open(config.cluster_info_path, 'w') as f:
-        for line in lines:
-            f.write(line)
-
-
-def get_cluster_info(prefix_index):
-    with open(config.cluster_info_path, 'r') as f:
-        lines = f.readlines()
-    # split the cluster_labels with ','
-    cluster_labels = lines[prefix_index].split(',')
-    cluster_labels = [int(i) for i in cluster_labels]
-    return cluster_labels
-
-
-def get_cluster_num(prefix_index):
-    cluster_labels = get_cluster_info(prefix_index)
-    return len(cluster_labels)
-
-
-def check_duplicate_from_train(prefix_index, ipv6_set):
+def remove_init_duplicate(prefix_index, ipv6_set):
     # check if the ipv6 address is in the training set
     # ipv6_set is a dict, the key is the ipv6 address and the value is the cluster label
     path = config.data_path + '{prefix_index}.txt'.format(prefix_index=prefix_index)
@@ -177,7 +195,7 @@ def check_duplicate_from_train(prefix_index, ipv6_set):
         ipv6_set.pop(ipv6)
 
 
-def check_duplicate_from_bank(prefix_index, ipv6_set):
+def remove_bank_duplicate(prefix_index, ipv6_set):
     # check if the ipv6 address is in the bank
     # ipv6_set is a dict, the key is the ipv6 address and the value is the cluster label
     # check if the bank prefix_index exists
@@ -242,7 +260,8 @@ def format_str_to_vector(ipv6_str):
         segment = segment.zfill(4)
         # convert the segment to 4-bit integers
         result.extend([int(segment[i], 16) for i in range(0, 4)])
-    return np.array(result)
+    # return np.array(result)
+    return result
 
 
 def format_str_to_standard(ipv6_str):
@@ -281,39 +300,39 @@ def read_file(file):
             ip_list.append(ip)
     return ip_list
 
-def tran_ipv6(sim_ip):
-    if sim_ip == "::":
-        return "0000:0000:0000:0000:0000:0000:0000:0000"
-    ip_list = ["0000", "0000", "0000", "0000", "0000", "0000", "0000", "0000"]
-    if sim_ip.startswith("::"):
-        temp_list = sim_ip.split(":")
-        for i in range(0, len(temp_list)):
-            ip_list[i + 8 - len(temp_list)] = ("0000" + temp_list[i])[-4:]
-    elif sim_ip.endswith("::"):
-        temp_list = sim_ip.split(":")
-        for i in range(0, len(temp_list)):
-            ip_list[i] = ("0000" + temp_list[i])[-4:]
-    elif "::" not in sim_ip:
-        temp_list = sim_ip.split(":")
-        for i in range(0, len(temp_list)):
-            ip_list[i] = ("0000" + temp_list[i])[-4:]
-    # elif sim_ip.index("::") > 0:
-    else:
-        temp_list = sim_ip.split("::")
-        temp_list0 = temp_list[0].split(":")
-        # print(temp_list0)
-        for i in range(0, len(temp_list0)):
-            ip_list[i] = ("0000" + temp_list0[i])[-4:]
-        temp_list1 = temp_list[1].split(":")
-        # print(temp_list1)
-        for i in range(0, len(temp_list1)):
-            ip_list[i + 8 - len(temp_list1)] = ("0000" + temp_list1[i])[-4:]
-    # else:
-    #     temp_list = sim_ip.split(":")
-    #     for i in range(0, temp_list):
-    #         ip_list[i] = ("0000" + temp_list[i])[-4:]
-    # print(ip_list)
-    return ":".join(ip_list)
+# def tran_ipv6(sim_ip):
+#     if sim_ip == "::":
+#         return "0000:0000:0000:0000:0000:0000:0000:0000"
+#     ip_list = ["0000", "0000", "0000", "0000", "0000", "0000", "0000", "0000"]
+#     if sim_ip.startswith("::"):
+#         temp_list = sim_ip.split(":")
+#         for i in range(0, len(temp_list)):
+#             ip_list[i + 8 - len(temp_list)] = ("0000" + temp_list[i])[-4:]
+#     elif sim_ip.endswith("::"):
+#         temp_list = sim_ip.split(":")
+#         for i in range(0, len(temp_list)):
+#             ip_list[i] = ("0000" + temp_list[i])[-4:]
+#     elif "::" not in sim_ip:
+#         temp_list = sim_ip.split(":")
+#         for i in range(0, len(temp_list)):
+#             ip_list[i] = ("0000" + temp_list[i])[-4:]
+#     # elif sim_ip.index("::") > 0:
+#     else:
+#         temp_list = sim_ip.split("::")
+#         temp_list0 = temp_list[0].split(":")
+#         # print(temp_list0)
+#         for i in range(0, len(temp_list0)):
+#             ip_list[i] = ("0000" + temp_list0[i])[-4:]
+#         temp_list1 = temp_list[1].split(":")
+#         # print(temp_list1)
+#         for i in range(0, len(temp_list1)):
+#             ip_list[i + 8 - len(temp_list1)] = ("0000" + temp_list1[i])[-4:]
+#     # else:
+#     #     temp_list = sim_ip.split(":")
+#     #     for i in range(0, temp_list):
+#     #         ip_list[i] = ("0000" + temp_list[i])[-4:]
+#     # print(ip_list)
+#     return ":".join(ip_list)
 
 
 def pandas_entropy(column, base=None):
@@ -424,7 +443,8 @@ def alias_detection(df_entropy, prefix_index):
         list_a = read_file(config.zmap_result_path + 'scan_' + zmap_file)
         ip_list = []
         for i, val in enumerate(list_a):
-            ip_list.append(tran_ipv6(val))
+            # ip_list.append(tran_ipv6(val))
+            ip_list.append(format_str_to_standard(val))
         active_alias_df = pd.DataFrame(ip_list, columns=['ipv6'])
         # print(active_alias_df.shape)
         active_alias_df['count'] = [1] * active_alias_df.shape[0]

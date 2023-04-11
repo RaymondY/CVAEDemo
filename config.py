@@ -11,11 +11,19 @@ class DefaultConfig(object):
     current_path = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(current_path, 'data/')
     model_path = os.path.join(current_path, 'model/')
-    model_fined_path = os.path.join(current_path, 'model_fined/')
+    iter_model_path = os.path.join(current_path, 'iter_model/')
+
+    # temp data path
+    generated_address_path = os.path.join(current_path, 'generated_address/')
     new_address_path = os.path.join(current_path, 'new_address/')
     address_bank_path = os.path.join(current_path, 'address_bank/')
     zmap_result_path = os.path.join(current_path, 'zmap_result/')
+    iter_info_path = os.path.join(current_path, 'iter_info/')
+
+    init_cluster_info_path = os.path.join(current_path, 'init_cluster_info.txt')
     cluster_info_path = os.path.join(current_path, 'cluster_info.txt')
+
+    local_ipv6 = "2402:f000:6:1401:46a8:42ff:fe43:6d00"
 
     input_size = 32
     latent_size = 8
@@ -34,6 +42,9 @@ class DefaultConfig(object):
 
     epoch_num = 40
     lr = 1e-3
+
+    warmup_epoch_num = 3
+    warmup_lr = 1e-5
 
     prefix_budget = 5000  
     growth_factor = 10
